@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Design tokens — mirror the approved prototype.
+   Blue = folder, Amber = file. Light + dark are designed together so contrast
+   holds in both themes (WCAG AA, verified ≥ 4.5:1 for body text).
+--------------------------------------------------------------------------- */
+:root {
+  --primary: #2563eb;
+  --primary-solid: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary: #3b82f6;
+  --accent: #d97706;
+  --accent-solid: #b45309;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --fg: #0f172a;
+  --sub: #64748b;
+  --muted: #f1f5fd;
+  --border: #e4ecfc;
+  --destructive: #dc2626;
+  --destructive-text: #dc2626;
+  --ring: #2563eb;
+  --folder: #2563eb;
+  --file: #d97706;
+  /* Tailwind 的透明度修饰符（如 bg-primary/12）需要 `rgb(<通道> / <alpha>)` 形式：
+     直接对 var(--primary) 这类颜色值叠加透明度不会生成任何样式，故额外提供通道变量。 */
+  --primary-rgb: 37 99 235;
+  --ring-rgb: 37 99 235;
+  --sub-rgb: 100 116 139;
+  --muted-rgb: 241 245 253;
+  --destructive-rgb: 220 38 38;
+  --accent-rgb: 217 119 6;
+  --folder-rgb: 37 99 235;
+  --file-rgb: 217 119 6;
+  --overlay: rgba(15, 23, 42, 0.45);
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+
+  --dur: 180ms;
+  --sidebar-w: 264px;
+}
+
+.dark {
+  /* Brand blue stays legible as text on dark surfaces… */
+  --primary: #3b82f6;
+  /* …while solid fills keep white text at ≥4.5:1 (a single blue can't do both). */
+  --primary-solid: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary: #2563eb;
+  --accent: #fbbf24;
+  --accent-solid: #b45309;
+  --bg: #0b1220;
+  --surface: #111a2e;
+  --fg: #e7ecf5;
+  --sub: #9aa7bd;
+  --muted: #17233d;
+  --border: #243352;
+  --destructive: #dc2626;
+  --destructive-text: #f87171;
+  --ring: #60a5fa;
+  --folder: #60a5fa;
+  --file: #fbbf24;
+  --primary-rgb: 59 130 246;
+  --ring-rgb: 96 165 250;
+  --sub-rgb: 154 167 189;
+  --muted-rgb: 23 35 61;
+  --destructive-rgb: 220 38 38;
+  --accent-rgb: 251 191 36;
+  --folder-rgb: 96 165 250;
+  --file-rgb: 251 191 36;
+  --overlay: rgba(0, 0, 0, 0.6);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Numbers that update live (sizes, dates, progress) must not jitter. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--sub);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Skeleton shimmer that works in both themes without hard-coded colours. */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--muted) 25%,
+      color-mix(in srgb, var(--muted) 55%, var(--surface)) 37%,
+      var(--muted) 63%
+    );
+    background-size: 400% 100%;
+  }
+}
+
+/* Honour the OS reduced-motion preference: no decorative animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
