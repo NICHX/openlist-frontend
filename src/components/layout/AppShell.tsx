@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import {
   ChevronRight,
@@ -301,7 +301,7 @@ function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   }
 
   return (
-    <header className="flex min-h-[56px] shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
+    <header className="flex min-h-[52px] shrink-0 items-center gap-1.5 border-b border-border bg-surface px-3 py-1 md:min-h-[56px] md:gap-2 md:py-2">
       <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onOpenMenu} aria-label="打开菜单">
         <Menu className="h-5 w-5" />
       </Button>
@@ -309,7 +309,7 @@ function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
       {showBreadcrumb ? (
         <Breadcrumb path={currentPath} />
       ) : (
-        <div className="flex-1 truncate text-sm font-semibold">
+        <div className="min-w-0 flex-1 truncate text-sm font-semibold">
           {PAGE_TITLES[pathname] || "全部文件"}
         </div>
       )}
@@ -348,25 +348,38 @@ function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
 function Breadcrumb({ path }: { path: string }) {
   const navigate = useNavigate()
   const crumbs = useMemo(() => toCrumbs(path), [path])
+  const navRef = useRef<HTMLElement>(null)
+
+  // Keep the deepest crumb in view: on narrow screens the path scrolls
+  // horizontally instead of wrapping (which used to break the layout).
+  useEffect(() => {
+    const el = navRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [path])
 
   return (
-    <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden" aria-label="路径导航">
+    <nav
+      ref={navRef}
+      className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      aria-label="路径导航"
+    >
       {crumbs.map((crumb, i) => {
         const isCurrent = i === crumbs.length - 1
         return (
-          <span key={crumb.path} className="flex min-w-0 items-center">
+          <span key={crumb.path} className="flex shrink-0 items-center">
             {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-border" />}
             <button
               type="button"
+              title={crumb.name}
               onClick={() => navigate(`/files?path=${encodeURIComponent(crumb.path)}`)}
               className={cn(
-                "flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-input px-2 py-1.5 text-sm transition-colors hover:bg-muted",
+                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-input px-2 py-1 text-sm transition-colors hover:bg-muted",
                 isCurrent ? "font-semibold text-foreground" : "font-medium text-subtle",
               )}
               aria-current={isCurrent ? "page" : undefined}
             >
               {i === 0 && <Cloud className="h-3.5 w-3.5" />}
-              <span className={cn("truncate", isCurrent ? "" : "max-w-[120px]")}>{crumb.name}</span>
+              <span>{crumb.name}</span>
             </button>
           </span>
         )
@@ -427,7 +440,7 @@ function UploadTrigger() {
         ref={fileInput}
         type="file"
         multiple
-        hidden
+        className="sr-only"
         onChange={(e) => {
           handleFiles(e.target.files)
           e.target.value = ""
@@ -440,7 +453,7 @@ function UploadTrigger() {
         }}
         type="file"
         multiple
-        hidden
+        className="sr-only"
         onChange={(e) => {
           handleFiles(e.target.files)
           e.target.value = ""
@@ -497,7 +510,7 @@ function MobileNav() {
         ref={fileInput}
         type="file"
         multiple
-        hidden
+        className="sr-only"
         onChange={(e) => {
           if (e.target.files?.length) enqueue(filesFromInput(e.target.files), currentPath, { rapid: true })
           e.target.value = ""

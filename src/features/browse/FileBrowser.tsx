@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   Eye,
+  ExternalLink,
   Filter,
   FolderPlus,
   Grid2x2,
@@ -26,7 +27,7 @@ import { cn } from "@/lib/utils"
 import { formatBytes, formatDate } from "@/lib/format"
 import { joinPath } from "@/lib/path"
 import { categoryOf, isPreviewable, type FileCategory } from "@/lib/filetype"
-import { copyDirectLink, copyText, downloadFile, resolveRawUrl } from "@/lib/download"
+import { copyDirectLink, copyText, downloadFile, openDirectLink, resolveRawUrl } from "@/lib/download"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -466,10 +467,11 @@ function Toolbar(props: {
 }) {
   const { view, setView } = props
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2.5">
+    <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-surface px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <Button
         variant="ghost"
         size="icon-sm"
+        className="shrink-0"
         onClick={() => setView(view === "list" ? "grid" : "list")}
         aria-label={view === "list" ? "切换到网格视图" : "切换到列表视图"}
         title={view === "list" ? "网格视图" : "列表视图"}
@@ -479,9 +481,11 @@ function Toolbar(props: {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1.5">
+          <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
             <ArrowUpDown className="h-4 w-4" />
-            {SORT_LABEL_LONG[(props.orderBy || "name") as (typeof SORT_OPTIONS)[number]]}
+            <span className="hidden sm:inline">
+              {SORT_LABEL_LONG[(props.orderBy || "name") as (typeof SORT_OPTIONS)[number]]}
+            </span>
             {props.orderDirection === "desc" ? " ↓" : " ↑"}
           </Button>
         </DropdownMenuTrigger>
@@ -504,9 +508,9 @@ function Toolbar(props: {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className={cn("gap-1.5", props.typeFilter !== "all" && "border-primary text-primary")}>
+          <Button variant="outline" size="sm" className={cn("shrink-0 gap-1.5", props.typeFilter !== "all" && "border-primary text-primary")}>
             <Filter className="h-4 w-4" />
-            {FILTERS.find((f) => f.key === props.typeFilter)?.label ?? "类型"}
+            <span className="hidden sm:inline">{FILTERS.find((f) => f.key === props.typeFilter)?.label ?? "类型"}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -523,7 +527,7 @@ function Toolbar(props: {
       <div className="flex-1" />
 
       {props.canWrite && (
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={props.onMkdir} aria-label="新建文件夹">
+        <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={props.onMkdir} aria-label="新建文件夹">
           <FolderPlus className="h-4 w-4" />
           <span className="hidden sm:inline">新建文件夹</span>
         </Button>
@@ -531,7 +535,7 @@ function Toolbar(props: {
       <Button
         variant={props.selectMode ? "primary" : "outline"}
         size="sm"
-        className="gap-1.5"
+        className="shrink-0 gap-1.5"
         onClick={props.onToggleSelectMode}
         aria-pressed={props.selectMode}
         aria-label="多选"
@@ -542,6 +546,7 @@ function Toolbar(props: {
       <Button
         variant="ghost"
         size="icon-sm"
+        className="shrink-0"
         onClick={props.onRefresh}
         aria-label="刷新"
         title="刷新"
@@ -691,6 +696,16 @@ function RowActions({
           <DropdownMenuItem onClick={onPreview}>
             <Eye className="h-4 w-4" />
             预览
+          </DropdownMenuItem>
+        )}
+        {!entry.is_dir && (
+          <DropdownMenuItem
+            onClick={() =>
+              void openDirectLink(fullPath).catch((e) => toast.error(String(e.message || e)))
+            }
+          >
+            <ExternalLink className="h-4 w-4" />
+            在新窗口打开
           </DropdownMenuItem>
         )}
         {!entry.is_dir && (
@@ -1103,7 +1118,7 @@ function EmptyState({
           <input
             type="file"
             multiple
-            hidden
+            className="sr-only"
             onChange={(e) => {
               const files = e.target.files
               if (files?.length) {
@@ -1191,7 +1206,7 @@ function DropZone({ path, canWrite, visible }: { path: string; canWrite: boolean
         ref={inputRef}
         type="file"
         multiple
-        hidden
+        className="sr-only"
         onChange={(e) => {
           const files = e.target.files
           if (files?.length) {
