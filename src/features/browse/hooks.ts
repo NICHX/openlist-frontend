@@ -55,6 +55,8 @@ export function useFileDetail(path: string | null, password = "") {
     enabled: Boolean(path),
     staleTime: 60_000,
     retry: false,
+    // 预览内切换文件时保留上一个文件的详情，避免导航按钮/播放器闪一下。
+    placeholderData: keepPreviousData,
   })
 }
 

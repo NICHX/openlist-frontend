@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import {
   File,
   FileArchive,
@@ -6,9 +7,11 @@ import {
   Folder,
   Image as ImageIcon,
   Music,
+  Play,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { resolveRawUrl } from "@/lib/download"
 import type { FileCategory } from "@/lib/filetype"
 
 const ICONS: Record<FileCategory, LucideIcon> = {
@@ -37,7 +40,7 @@ export const kindLabel = (category: FileCategory): string => LABELS[category]
 
 interface FileTypeIconProps {
   category: FileCategory
-  /** Optional thumbnail URL — rendered for images when available. */
+  /** Optional thumbnail URL — rendered for images and videos when available. */
   thumb?: string
   size?: "sm" | "md" | "lg"
   className?: string
@@ -52,25 +55,36 @@ const SIZES = {
 /**
  * Type-coloured icon tile. Colour carries the folder/file semantic
  * (blue = folder, amber = file) while the glyph conveys the specific type, so
- * meaning never relies on colour alone.
+ * meaning never relies on colour alone. When the server provides a `thumb`
+ * (images *and* videos), it is shown instead, falling back to the glyph tile
+ * if the thumbnail fails to load.
  */
 export function FileTypeIcon({ category, thumb, size = "md", className }: FileTypeIconProps) {
   const s = SIZES[size]
   const isFolder = category === "folder"
+  const [thumbFailed, setThumbFailed] = useState(false)
 
-  if (thumb && category === "image") {
+  // Reset the error flag when the entry (and thus its thumbnail) changes.
+  useEffect(() => setThumbFailed(false), [thumb])
+
+  const supportsThumb = category === "image" || category === "video"
+
+  if (thumb && supportsThumb && !thumbFailed) {
     return (
       <span className={cn("relative overflow-hidden bg-muted", s.box, className)}>
         <img
-          src={thumb}
+          src={resolveRawUrl(thumb)}
           alt=""
           loading="lazy"
           decoding="async"
           className="h-full w-full object-cover"
-          onError={(e) => {
-            e.currentTarget.style.display = "none"
-          }}
+          onError={() => setThumbFailed(true)}
         />
+        {category === "video" && (
+          <span className="absolute inset-0 grid place-items-center bg-black/25">
+            <Play className={cn("fill-white text-white", size === "lg" ? "h-5 w-5" : "h-3.5 w-3.5")} />
+          </span>
+        )}
       </span>
     )
   }

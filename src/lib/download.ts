@@ -11,6 +11,25 @@ export const resolveRawUrl = (raw: string): string => {
   }
 }
 
+/**
+ * OpenList 的 `/d/` 是「下载」（带 attachment），`/p/` 是「内联代理」（可流式播放），
+ * 两者共用同一套 `sign` 校验。把直链里的 `/d/` 换成 `/p/` 即可得到可播放地址，
+ * 用于「拉起播放器 / 在新窗口打开」而不是触发下载。
+ */
+export const toInlineUrl = (raw: string): string => {
+  const abs = resolveRawUrl(raw)
+  try {
+    const url = new URL(abs)
+    if (url.pathname.startsWith("/d/")) {
+      url.pathname = `/p/${url.pathname.slice(3)}`
+      return url.toString()
+    }
+  } catch {
+    /* keep as-is */
+  }
+  return abs
+}
+
 /** Trigger a browser download without navigating away from the SPA. */
 export const triggerDownload = (url: string, name?: string): void => {
   const anchor = document.createElement("a")
@@ -21,6 +40,27 @@ export const triggerDownload = (url: string, name?: string): void => {
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
+}
+
+/** Open a URL in a new tab — hands a stream off to the browser/OS player. */
+export const openInNewTab = (url: string): void => {
+  if (!url) return
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.target = "_blank"
+  anchor.rel = "noopener"
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+}
+
+/** Resolve a file's direct link and open its inline stream in a new tab (拉起播放器). */
+export async function openDirectLink(path: string): Promise<void> {
+  const resp = await fsApi.get(path)
+  if (resp.code !== 200) {
+    throw new Error(resp.message || "获取链接失败")
+  }
+  openInNewTab(toInlineUrl(resp.data.raw_url))
 }
 
 /**
