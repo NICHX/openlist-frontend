@@ -87,7 +87,7 @@ export interface DirectoryNode extends Obj {
   children?: DirectoryNode[]
 }
 
-export type OrderBy = "" | "name" | "size" | "modified"
+export type OrderBy = "" | "name" | "size" | "modified" | "type"
 export type OrderDirection = "" | "asc" | "desc"
 
 export interface ListParams {

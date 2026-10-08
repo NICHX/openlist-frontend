@@ -50,6 +50,7 @@ import { useUploadStore } from "@/stores/upload"
 
 const PER_PAGE_OPTIONS = [50, 100, 200, 500]
 const VIRTUAL_THRESHOLD = 200
+const FETCH_ALL_PER_PAGE = 100000
 
 interface FilterOption {
   key: string
@@ -67,16 +68,52 @@ const FILTERS: FilterOption[] = [
   { key: "archive", label: "压缩包", match: (c) => c === "archive" },
 ]
 
-const SORT_OPTIONS = ["name", "size", "modified"] as const
+const SORT_OPTIONS = ["name", "size", "modified", "type"] as const
 const SORT_LABEL: Record<(typeof SORT_OPTIONS)[number], string> = {
   name: "名称",
   size: "大小",
   modified: "修改时间",
+  type: "类型",
 }
 const SORT_LABEL_LONG: Record<(typeof SORT_OPTIONS)[number], string> = {
   name: "按名称",
   size: "按大小",
   modified: "按时间",
+  type: "按类型",
+}
+
+const CATEGORY_RANK: Record<FileCategory, number> = {
+  folder: 0,
+  image: 1,
+  video: 2,
+  audio: 3,
+  doc: 4,
+  text: 5,
+  archive: 6,
+  file: 7,
+}
+
+const NAME_COLLATOR = new Intl.Collator("zh", { numeric: true, sensitivity: "base" })
+
+function compareEntries(a: Obj, b: Obj, orderBy: OrderBy, orderDirection: OrderDirection): number {
+  if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
+  const dir = orderDirection === "desc" ? -1 : 1
+  switch (orderBy) {
+    case "size":
+      return (a.size - b.size) * dir
+    case "modified": {
+      const at = Date.parse(a.modified)
+      const bt = Date.parse(b.modified)
+      return ((Number.isNaN(at) ? 0 : at) - (Number.isNaN(bt) ? 0 : bt)) * dir
+    }
+    case "type": {
+      const diff = CATEGORY_RANK[categoryOf(a)] - CATEGORY_RANK[categoryOf(b)]
+      return diff !== 0 ? diff * dir : NAME_COLLATOR.compare(a.name, b.name)
+    }
+    case "name":
+    default:
+      return NAME_COLLATOR.compare(a.name, b.name) * dir
+  }
 }
 
 export function FileBrowser() {
@@ -110,18 +147,23 @@ export function FileBrowser() {
   const completionTick = useUploadStore((s) => s.completionTick)
   const invalidate = useFsInvalidate()
 
-  const query = useDirectoryList(path, { page, perPage, orderBy, orderDirection, password })
+  const query = useDirectoryList(path, { page: 1, perPage: FETCH_ALL_PER_PAGE, password })
   const resp = query.data
   const ok = resp?.code === 200
   const payload = ok ? resp!.data : null
   const allEntries: Obj[] = payload?.content ?? []
   const canWrite = payload ? payload.write !== false : true
 
-  const entries = useMemo(() => {
+  const sortedEntries = useMemo(() => {
     const filter = FILTERS.find((f) => f.key === typeFilter) ?? FILTERS[0]
-    if (filter.key === "all") return allEntries
-    return allEntries.filter((e) => filter.match(categoryOf(e)))
-  }, [allEntries, typeFilter])
+    const filtered = filter.key === "all" ? allEntries : allEntries.filter((e) => filter.match(categoryOf(e)))
+    return [...filtered].sort((a, b) => compareEntries(a, b, orderBy, orderDirection))
+  }, [allEntries, typeFilter, orderBy, orderDirection])
+
+  const entries = useMemo(
+    () => sortedEntries.slice((page - 1) * perPage, page * perPage),
+    [sortedEntries, page, perPage],
+  )
 
   const counts = useMemo(() => {
     let folders = 0
@@ -149,9 +191,9 @@ export function FileBrowser() {
   // Clamp the page when the folder shrinks.
   useEffect(() => {
     if (!payload) return
-    const pages = Math.max(1, Math.ceil(payload.total / perPage))
+    const pages = Math.max(1, Math.ceil(sortedEntries.length / perPage))
     if (page > pages) setPage(pages)
-  }, [payload, perPage, page])
+  }, [payload, sortedEntries.length, perPage, page])
 
   // Refresh the listing as soon as an upload finishes.
   useEffect(() => {
@@ -276,7 +318,7 @@ export function FileBrowser() {
     else setSort(by, "asc")
   }
 
-  const pages = payload ? Math.max(1, Math.ceil(payload.total / perPage)) : 1
+  const pages = Math.max(1, Math.ceil(sortedEntries.length / perPage))
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -377,7 +419,7 @@ export function FileBrowser() {
           <Pagination
             page={page}
             pages={pages}
-            total={payload?.total ?? 0}
+            total={sortedEntries.length}
             perPage={perPage}
             onPage={setPage}
             onPerPage={(n) => {
