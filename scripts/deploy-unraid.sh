@@ -25,6 +25,7 @@ SKIP_BUILD=0
 NO_RESTART=0
 DRY_RUN=0
 REVERT=0
+TOGGLE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$PROJECT_DIR/dist"
@@ -59,6 +60,7 @@ usage() {
   --skip-build            跳过构建，直接上传现有 dist/
   --no-restart            只改配置不重启容器
   --dry-run               只打印动作，读取操作照常执行
+  --toggle                一键切换：官方内置前端 ↔ 自定义前端（改 dist_dir 并重启）
   --revert                回滚：清空 dist_dir 并重启（恢复官方前端）
   -h, --help              显示本帮助
 USAGE
@@ -76,6 +78,7 @@ while [ $# -gt 0 ]; do
     --skip-build) SKIP_BUILD=1; shift ;;
     --no-restart) NO_RESTART=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --toggle) TOGGLE=1; shift ;;
     --revert) REVERT=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "未知参数：$1（用 --help 查看用法）" ;;
@@ -95,6 +98,16 @@ ssh_write() {
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" "$@"
 }
 
+site_probe() {
+  local out="$1" scheme code
+  for scheme in https http; do
+    code="$(curl -s -m 3 -k -o "$out" -w '%{http_code}' "$scheme://$REMOTE_HOST:$PORT/" || true)"
+    if [ "$code" = "200" ]; then printf '%s' "$scheme"; return 0; fi
+  done
+  printf '%s' ""
+  return 1
+}
+
 # ============================================================================
 # 回滚模式
 # ============================================================================
@@ -111,6 +124,61 @@ if [ "$REVERT" = 1 ]; then
     ssh_write "docker restart '$CONTAINER' >/dev/null"
   fi
   ok "已回滚（浏览器硬刷新即可）"
+  exit 0
+fi
+
+# ============================================================================
+# 一键切换：官方内置前端 ↔ 自定义前端
+# ============================================================================
+if [ "$TOGGLE" = 1 ]; then
+  step "一键切换前端（官方内置 ↔ 自定义）"
+  ssh_read "test -f '$CONFIG'" || die "找不到 $CONFIG"
+  ssh_read "command -v jq >/dev/null 2>&1" || die "远端缺少 jq，无法安全修改 JSON"
+
+  CURRENT="$(ssh_read "jq -r '.dist_dir // \"\"' '$CONFIG'")"
+  if [ "$CURRENT" = "$CONTAINER_DIR" ]; then
+    TARGET=""
+    LABEL="官方内置前端"
+  else
+    TARGET="$CONTAINER_DIR"
+    LABEL="自定义前端"
+    ssh_read "test -f '$REMOTE_DIR/index.html'" || die "自定义产物不存在（$REMOTE_DIR/index.html），请先正常运行一次部署"
+  fi
+
+  if [ "$CURRENT" = "$TARGET" ]; then
+    warn "dist_dir 已是 ${TARGET:-（空）}，无需切换"
+  else
+    ssh_write "ts=\$(date +%Y%m%d-%H%M%S); cp '$CONFIG' \"$CONFIG.bak.\$ts\""
+    ssh_write "jq --arg d '$TARGET' '.dist_dir=\$d' '$CONFIG' > '$CONFIG.tmp' && mv '$CONFIG.tmp' '$CONFIG'"
+    ok "dist_dir: ${CURRENT:-（空）} -> ${TARGET:-（空）}"
+  fi
+
+  CDN="$(ssh_read "jq -r '.cdn // \"\"' '$CONFIG'")"
+  if [ "$TARGET" = "$CONTAINER_DIR" ] && [ -n "$CDN" ]; then
+    warn "config.json 的 cdn 非空（${CDN}）：会把 /assets/ 302 到 CDN 导致自定义资源 404，请先置空"
+  fi
+
+  if [ "$NO_RESTART" = 1 ]; then
+    warn "已指定 --no-restart：请自行重启容器使配置生效"
+  else
+    [ -n "$CONTAINER" ] || CONTAINER="$(ssh_read "docker ps --format '{{.Names}}|{{.Image}}' | grep -i openlist | head -1 | cut -d'|' -f1" || true)"
+    [ -n "$CONTAINER" ] || die "未找到 OpenList 容器，请用 --container 指定"
+    step "重启容器 ${CONTAINER}（index.html 在启动时读取，必须重启）"
+    ssh_write "docker restart '$CONTAINER' >/dev/null" && ok "已重启"
+
+    if [ "$DRY_RUN" = 0 ]; then
+      SCHEME=""
+      for _ in $(seq 1 40); do
+        SCHEME="$(site_probe /tmp/openlist-switch-check.html || true)"
+        [ -n "$SCHEME" ] && break
+        sleep 1
+      done
+      if [ -n "$SCHEME" ]; then ok "站点返回 200（${SCHEME}）"; else warn "等待 https/http://$REMOTE_HOST:$PORT/ 超时"; fi
+    fi
+  fi
+
+  ok "已切换到：${LABEL}（浏览器强制刷新 Cmd/Ctrl+Shift+R）"
+  printf '  当前前端：%s://%s:%s/  ->  dist_dir=%s\n\n' "${SCHEME:-https}" "$REMOTE_HOST" "$PORT" "${TARGET:-（空=官方内置）}"
   exit 0
 fi
 
@@ -217,14 +285,14 @@ if [ "$DRY_RUN" = 1 ] || [ "$NO_RESTART" = 1 ]; then
 fi
 
 step "6/6 校验服务"
-CODE=""
+SCHEME=""
 for _ in $(seq 1 40); do
-  CODE="$(curl -s -m 3 -o /tmp/openlist-deploy-check.html -w '%{http_code}' "http://$REMOTE_HOST:$PORT/" || true)"
-  [ "$CODE" = "200" ] && break
+  SCHEME="$(site_probe /tmp/openlist-deploy-check.html || true)"
+  [ -n "$SCHEME" ] && break
   sleep 1
 done
-[ "$CODE" = "200" ] || die "等待 http://$REMOTE_HOST:$PORT/ 超时（最后状态 $CODE）"
-ok "站点返回 200"
+[ -n "$SCHEME" ] || die "等待 https/http://$REMOTE_HOST:$PORT/ 超时（未拿到 200）"
+ok "站点返回 200（${SCHEME}）"
 
 if grep -q "$ASSET_JSON" /tmp/openlist-deploy-check.html; then
   ok "首页已引用本前端产物（${ASSET_JSON}）"
@@ -240,7 +308,7 @@ fi
 if [ -n "$LOG_LINE" ]; then ok "OpenList 日志：$LOG_LINE"; else warn "日志中未见 'custom dist directory'，请检查容器日志"; fi
 
 printf '\n%s部署完成%s\n' "$C_OK" "$C_RESET"
-printf '  前端地址：http://%s:%s/\n' "$REMOTE_HOST" "$PORT"
+printf '  前端地址：%s://%s:%s/\n' "${SCHEME:-https}" "$REMOTE_HOST" "$PORT"
 printf '  产物目录：%s:%s  ->  容器 %s\n' "$HOST" "$REMOTE_DIR" "$CONTAINER_DIR"
 printf '  配置备份：%s.bak.<时间戳>\n\n' "$CONFIG"
 printf '回滚：%s --revert\n' "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
